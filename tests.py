@@ -251,37 +251,48 @@ class TestHTTPClient(unittest.TestCase):
 
     def test_post_pending_body(self):
         with self.client:
-            self.client.send(b'POST / HTTP/1.0', b'Content-Length: 4')
+            response = self.client.send(b'POST / HTTP/1.0',
+                                        b'Content-Length: 4')
             self.client.sendall(b'EOF\n')
-            data = bytearray()
 
-            while b'EOF\n' not in data:
-                data.extend(self.client.recv(8192))
+            self.assertEqual(response.header, None)
 
-            self.assertEqual(data[-8:], b'\r\n\r\nEOF\n')
+            body = bytearray()
+
+            for data in response:
+                body.extend(data)
+
+            self.assertEqual(response.status, 200)
+            self.assertEqual(response.message, b'OK')
+            self.assertEqual(body, b'EOF\n')
 
         async def main():
             async with self.client:
-                await self.client.send(b'POST / HTTP/1.0',
-                                       b'Content-Length: 4')
+                response = await self.client.send(b'POST / HTTP/1.0',
+                                                  b'Content-Length: 4')
                 await self.client.sendall(b'EOF\n')
-                data = bytearray()
 
-                while b'EOF\n' not in data:
-                    data.extend(await self.client.recv(8192))
+                self.assertEqual(response.header, None)
 
-                self.assertEqual(data[-8:], b'\r\n\r\nEOF\n')
+                body = bytearray()
+
+                async for data in response:
+                    body.extend(data)
+
+                self.assertEqual(response.status, 200)
+                self.assertEqual(response.message, b'OK')
+                self.assertEqual(body, b'EOF\n')
 
         asyncio.run(main())
 
     def test_connect_timeout(self):
         with self.assertRaises(socket.timeout):
-            with HTTPClient('192.0.2.1', 12345, timeout=1) as client:
+            with HTTPClient('192.0.2.1', 12345, timeout=1):
                 pass
 
         with self.assertRaises(socket.timeout):
             async def main():
-                async with HTTPClient('192.0.2.1', 12345, timeout=1) as client:
+                async with HTTPClient('192.0.2.1', 12345, timeout=1):
                     pass
 
             asyncio.run(main())

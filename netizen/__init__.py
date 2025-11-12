@@ -7,7 +7,7 @@ import ssl
 
 from .http_response import HTTPResponse
 
-__version__ = '0.0.1'
+__version__ = '0.0.2'
 
 
 def getfamily(host, port=None):

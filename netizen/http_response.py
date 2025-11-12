@@ -94,8 +94,7 @@ class HTTPResponse:
             client.sock.sendall(b'%s\r\n%s\r\n\r\n%s' % args)
 
             while self.header is None and not kwargs['pending']:
-                self._buf.extend(self.client.sock.recv(8192))
-                self._handle_response()
+                self.__next__()
 
     @property
     def status(self):
@@ -113,7 +112,17 @@ class HTTPResponse:
         return JSONResponse(self, **kwargs)
 
     def __await__(self):
-        return self.__anext__().__await__()
+        async def header():
+            await self.client.loop.sock_sendall(
+                self.client.sock, b'%s\r\n%s\r\n\r\n%s' % self.request
+            )
+
+            while self.header is None and not self.options['pending']:
+                await self.__anext__()
+
+            return self
+
+        return header().__await__()
 
     def __iter__(self):
         return self
@@ -147,6 +156,11 @@ class HTTPResponse:
                     self.client.update_cookie(cookie.split(b';', 1)[0])
 
     def __next__(self):
+        if self.header is None:
+            self._buf.extend(self.client.sock.recv(8192))
+            self._handle_response()
+            return b''
+
         # --- BODY ---
         if self.content_length == -1:  # chunked
             while True:
@@ -182,17 +196,11 @@ class HTTPResponse:
 
     async def __anext__(self):
         if self.header is None:
-            await self.client.loop.sock_sendall(
-                self.client.sock, b'%s\r\n%s\r\n\r\n%s' % self.request
+            self._buf.extend(
+                await self.client.loop.sock_recv(self.client.sock, 8192)
             )
-
-            while self.header is None and not self.options['pending']:
-                self._buf.extend(
-                    await self.client.loop.sock_recv(self.client.sock, 8192)
-                )
-                self._handle_response()
-
-            return self
+            self._handle_response()
+            return b''
 
         # --- BODY ---
         if self.content_length == -1:  # chunked
