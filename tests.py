@@ -119,10 +119,7 @@ class TestHTTPClient(unittest.TestCase):
     def test_get_content_length(self):
         with self.client:
             response = self.client.send(b'GET / HTTP/1.0')
-            body = bytearray()
-
-            for data in response:
-                body.extend(data)
+            body = response.body()
 
             self.assertTrue(body.startswith(b'BEGIN'))
             self.assertTrue(body.endswith(b'END'))
@@ -131,10 +128,7 @@ class TestHTTPClient(unittest.TestCase):
         async def main():
             async with self.client:
                 response = await self.client.send(b'GET / HTTP/1.0')
-                body = bytearray()
-
-                async for data in response:
-                    body.extend(data)
+                body = await response.body()
 
                 self.assertTrue(body.startswith(b'BEGIN'))
                 self.assertTrue(body.endswith(b'END'))
@@ -144,10 +138,7 @@ class TestHTTPClient(unittest.TestCase):
     def test_get_chunked(self):
         with self.client:
             response = self.client.send(b'GET /chunked HTTP/1.1')
-            body = bytearray()
-
-            for data in response:
-                body.extend(data)
+            body = response.body()
 
             self.assertTrue(body.startswith(b'BEGIN'))
             self.assertTrue(body.endswith(b'END'))
@@ -156,10 +147,7 @@ class TestHTTPClient(unittest.TestCase):
         async def main():
             async with self.client:
                 response = await self.client.send(b'GET /chunked HTTP/1.1')
-                body = bytearray()
-
-                async for data in response:
-                    body.extend(data)
+                body = await response.body()
 
                 self.assertTrue(body.startswith(b'BEGIN'))
                 self.assertTrue(body.endswith(b'END'))
@@ -169,10 +157,7 @@ class TestHTTPClient(unittest.TestCase):
     def test_post_no_content_length(self):
         with self.client:
             response = self.client.send(b'POST / HTTP/1.0', body=b'foo=bar')
-            body = bytearray()
-
-            for data in response:
-                body.extend(data)
+            body = response.body()
 
             self.assertEqual(body, b'foo=bar')
 
@@ -213,8 +198,7 @@ class TestHTTPClient(unittest.TestCase):
             self.assertEqual(response.message, b'OK')
             self.assertEqual(response.url, b'')
 
-            for _ in response:
-                pass
+            response.body()
 
             exc = None
 
@@ -235,8 +219,7 @@ class TestHTTPClient(unittest.TestCase):
             self.assertEqual(response.message, b'Moved Permanently')
             self.assertTrue(b'\r\nCookie: foo=bar' not in header)
 
-            for _ in response:
-                pass
+            response.body()
 
             response = self.client.send(b'GET %s HTTP/1.0' % response.url)
             line, header, body = response.request
@@ -246,8 +229,38 @@ class TestHTTPClient(unittest.TestCase):
             self.assertEqual(response.message, b'Forbidden')
             self.assertTrue(b'\r\nCookie: foo=bar' in header)
 
+            response.body()
+
+    def test_get_body_too_large(self):
+        with self.client:
+            response = self.client.send(b'GET /json HTTP/1.1')
+
+            with self.assertRaises(ValueError):
+                response.json(max_size=2)
+
             for _ in response:
                 pass
+
+        with self.client:
+            response = self.client.send(b'GET /chunked HTTP/1.1')
+
+            with self.assertRaises(ValueError):
+                response.body(max_size=1)
+
+            for _ in response:
+                pass
+
+        async def main():
+            async with self.client:
+                response = await self.client.send(b'GET /chunked HTTP/1.1')
+
+                with self.assertRaises(ValueError):
+                    await response.body(max_size=1)
+
+                async for _ in response:
+                    pass
+
+        asyncio.run(main())
 
     def test_post_pending_body(self):
         with self.client:
@@ -257,10 +270,7 @@ class TestHTTPClient(unittest.TestCase):
 
             self.assertEqual(response.header, None)
 
-            body = bytearray()
-
-            for data in response:
-                body.extend(data)
+            body = response.body()
 
             self.assertEqual(response.status, 200)
             self.assertEqual(response.message, b'OK')
@@ -274,10 +284,7 @@ class TestHTTPClient(unittest.TestCase):
 
                 self.assertEqual(response.header, None)
 
-                body = bytearray()
-
-                async for data in response:
-                    body.extend(data)
+                body = await response.body()
 
                 self.assertEqual(response.status, 200)
                 self.assertEqual(response.message, b'OK')
@@ -314,8 +321,7 @@ class TestHTTPClient(unittest.TestCase):
             response = client.send(b'GET /timeout HTTP/1.1')
 
             with self.assertRaises(socket.timeout):
-                for _ in response:
-                    pass
+                response.body()
 
     def test_bad_chunked(self):
         with self.client:
@@ -323,8 +329,7 @@ class TestHTTPClient(unittest.TestCase):
             exc = None
 
             try:
-                for _ in response:
-                    pass
+                response.body()
             except Exception as e:
                 exc = e
 
@@ -333,8 +338,7 @@ class TestHTTPClient(unittest.TestCase):
             response = self.client.send(b'GET /chunked/bad/2 HTTP/1.1')
 
             try:
-                for _ in response:
-                    pass
+                response.body()
             except Exception as e:
                 exc = e
 

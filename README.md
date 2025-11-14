@@ -102,10 +102,9 @@ with HTTPClient('ip-api.com', 80) as client:
     print(response.json())
 
     # second request
-    response = client.send(b'GET / HTTP/1.1')
+    response = client.send(b'GET /json HTTP/1.1')
 
-    for data in response:
-        print('Received:', len(data), 'Bytes')
+    print(response.body())
 ```
 
 ## Handling URL redirects

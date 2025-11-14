@@ -56,23 +56,22 @@ class ChunkedDecoder:
 
 
 class JSONResponse(dict):
-    def __init__(self, response, **kwargs):
+    def __init__(self, response, max_size, **kwargs):
         self._response = response
+        self._body = response.body(max_size=max_size)
         self._kwargs = kwargs
-        self._body = bytearray()
 
         if response.client.sock.getblocking():
-            for data in response:
-                self._body.extend(data)
-
-            self.update(json.loads(self._body.decode(), **kwargs))
+            try:
+                self.update(json.loads(self._body.decode(), **kwargs))
+            finally:
+                del self._body[:]
 
     def __await__(self):
         async def body():
-            async for data in self._response:
-                self._body.extend(data)
-
-            self.update(json.loads(self._body.decode(), **self._kwargs))
+            self.update(
+                json.loads((await self._body).decode(), **self._kwargs)
+            )
             return self
 
         return body().__await__()
@@ -108,8 +107,34 @@ class HTTPResponse:
     def headers(self):
         return self.header.headers
 
-    def json(self, **kwargs):
-        return JSONResponse(self, **kwargs)
+    def body(self, max_size=100 * 1048576):
+        if self.content_length > max_size:
+            raise ValueError(f'response body too large: {self.content_length}')
+
+        body = bytearray()
+
+        if self.client.sock.getblocking():
+            for data in self:
+                body.extend(data)
+
+                if len(body) > max_size:
+                    raise ValueError('response body too large')
+
+            return body
+
+        async def coro():
+            async for data in self:
+                body.extend(data)
+
+                if len(body) > max_size:
+                    raise ValueError('response body too large')
+
+            return body
+
+        return coro()
+
+    def json(self, max_size=1048576, **kwargs):
+        return JSONResponse(self, max_size, **kwargs)
 
     def __await__(self):
         async def header():
