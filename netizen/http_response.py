@@ -97,13 +97,16 @@ class HTTPResponse:
                         client.__enter__()
 
                     client.sock.sendall(b'%s\r\n%s\r\n\r\n%s' % args)
+
+                    while self.header is None and not kwargs['pending']:
+                        self.__next__()
+
                     break
                 except OSError:
                     if retries == 0:
                         raise
-
-            while self.header is None and not kwargs['pending']:
-                self.__next__()
+                except StopIteration:
+                    break
 
     @property
     def status(self):
@@ -157,13 +160,15 @@ class HTTPResponse:
                     await self.client.loop.sock_sendall(
                         self.client.sock, b'%s\r\n%s\r\n\r\n%s' % self.request
                     )
+                    while self.header is None and not self.options['pending']:
+                        await self.__anext__()
+
                     break
                 except OSError:
                     if retries == 0:
                         raise
-
-            while self.header is None and not self.options['pending']:
-                await self.__anext__()
+                except StopAsyncIteration:
+                    break
 
             return self
 
@@ -172,7 +177,8 @@ class HTTPResponse:
     def __iter__(self):
         return self
 
-    def _handle_response(self):
+    def _handle_response(self, data):
+        self._buf.extend(data)
         header_size = self._buf.find(b'\r\n\r\n') + 2
 
         if header_size == 1:
@@ -202,8 +208,12 @@ class HTTPResponse:
 
     def __next__(self):
         if self.header is None:
-            self._buf.extend(self.client.sock.recv(8192))
-            self._handle_response()
+            data = self.client.sock.recv(8192)
+
+            if data == b'':
+                raise StopIteration
+
+            self._handle_response(data)
             return b''
 
         # --- BODY ---
@@ -241,10 +251,12 @@ class HTTPResponse:
 
     async def __anext__(self):
         if self.header is None:
-            self._buf.extend(
-                await self.client.loop.sock_recv(self.client.sock, 8192)
-            )
-            self._handle_response()
+            data = await self.client.loop.sock_recv(self.client.sock, 8192)
+
+            if data == b'':
+                raise StopAsyncIteration
+
+            self._handle_response(data)
             return b''
 
         # --- BODY ---
