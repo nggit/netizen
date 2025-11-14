@@ -290,11 +290,23 @@ class TestHTTPClient(unittest.TestCase):
             with HTTPClient('192.0.2.1', 12345, timeout=1):
                 pass
 
-        with self.assertRaises(socket.timeout):
-            async def main():
-                async with HTTPClient('192.0.2.1', 12345, timeout=1):
-                    pass
+        async def main():
+            async with HTTPClient('192.0.2.1', 12345, timeout=1):
+                pass
 
+        with self.assertRaises(socket.timeout):
+            asyncio.run(main())
+
+    def test_retries(self):
+        with self.assertRaises(OSError):
+            with HTTPClient('example.invalid', 80, timeout=1, retries=1):
+                pass
+
+        async def main():
+            async with HTTPClient('example.invalid', 80, timeout=1, retries=1):
+                pass
+
+        with self.assertRaises(OSError):
             asyncio.run(main())
 
     def test_recv_timeout(self):

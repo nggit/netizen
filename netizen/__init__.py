@@ -4,6 +4,7 @@
 import asyncio
 import socket
 import ssl
+import time
 
 from .http_response import HTTPResponse
 
@@ -19,25 +20,40 @@ def getfamily(host, port=None):
 
 
 class Client:
-    def __init__(self, host, port=None, *, timeout=30, loop=None, ssl=None,
-                 server_hostname=None):
+    def __init__(self, host, port=None, *, timeout=30, retries=0, loop=None,
+                 ssl=None, server_hostname=None):
         self.loop = loop
         self.host = host
         self.family, self.address = getfamily(host, port)
         self.timeout = timeout or None
+        self.retries = retries
         self.ssl = ssl  # can be True, ssl.SSLContext, or None
         self.server_hostname = server_hostname or host
         self.sock = None
 
     def __enter__(self):
-        self.sock = socket.socket(self.family, socket.SOCK_STREAM)
-        self.sock.settimeout(self.timeout)
+        retries = self.retries
 
-        try:
-            self.sock.connect(self.address)
-        except socket.timeout:
-            self.sock.close()
-            raise
+        while True:
+            self.sock = socket.socket(self.family, socket.SOCK_STREAM)
+            self.sock.settimeout(self.timeout)
+
+            try:
+                self.sock.connect(self.address)
+                break
+            except socket.timeout:
+                self.sock.close()
+                raise
+            except OSError:
+                self.sock.close()
+
+                if retries < 0:
+                    raise
+
+                if self.retries > 0:
+                    time.sleep(self.timeout / self.retries)
+
+                retries -= 1
 
         if self.ssl:
             if not isinstance(self.ssl, ssl.SSLContext):
@@ -57,21 +73,35 @@ class Client:
         if self.loop is None:
             self.loop = asyncio.get_running_loop()
 
-        self.sock = socket.socket(self.family, socket.SOCK_STREAM)
-        self.sock.setblocking(False)
+        retries = self.retries
 
-        task = self.loop.create_task(
-            self.loop.sock_connect(self.sock, self.address)
-        )
-        timer = self.loop.call_later(self.timeout, task.cancel)
+        while True:
+            self.sock = socket.socket(self.family, socket.SOCK_STREAM)
+            self.sock.setblocking(False)
 
-        try:
-            await task
-        except asyncio.CancelledError as exc:
-            self.sock.close()
-            raise socket.timeout from exc
-        finally:
-            timer.cancel()
+            task = self.loop.create_task(
+                self.loop.sock_connect(self.sock, self.address)
+            )
+            timer = self.loop.call_later(self.timeout, task.cancel)
+
+            try:
+                await task
+                break
+            except asyncio.CancelledError as exc:
+                self.sock.close()
+                raise socket.timeout from exc
+            except OSError:
+                self.sock.close()
+
+                if retries < 0:
+                    raise
+
+                if self.retries > 0:
+                    await asyncio.sleep(self.timeout / self.retries)
+
+                retries -= 1
+            finally:
+                timer.cancel()
 
         return self
 
