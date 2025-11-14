@@ -90,7 +90,17 @@ class HTTPResponse:
         self._chunked = ChunkedDecoder()
 
         if client.sock.getblocking():
-            client.sock.sendall(b'%s\r\n%s\r\n\r\n%s' % args)
+            for retries in range(self.client.retries, -1, -1):
+                try:
+                    if retries != self.client.retries:
+                        client.sock.close()
+                        client.__enter__()
+
+                    client.sock.sendall(b'%s\r\n%s\r\n\r\n%s' % args)
+                    break
+                except OSError:
+                    if retries == 0:
+                        raise
 
             while self.header is None and not kwargs['pending']:
                 self.__next__()
@@ -138,9 +148,19 @@ class HTTPResponse:
 
     def __await__(self):
         async def header():
-            await self.client.loop.sock_sendall(
-                self.client.sock, b'%s\r\n%s\r\n\r\n%s' % self.request
-            )
+            for retries in range(self.client.retries, -1, -1):
+                try:
+                    if retries != self.client.retries:
+                        self.client.sock.close()
+                        await self.client.__aenter__()
+
+                    await self.client.loop.sock_sendall(
+                        self.client.sock, b'%s\r\n%s\r\n\r\n%s' % self.request
+                    )
+                    break
+                except OSError:
+                    if retries == 0:
+                        raise
 
             while self.header is None and not self.options['pending']:
                 await self.__anext__()

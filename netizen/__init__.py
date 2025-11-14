@@ -32,9 +32,7 @@ class Client:
         self.sock = None
 
     def __enter__(self):
-        retries = self.retries
-
-        while True:
+        for retries in range(self.retries, -1, -1):
             self.sock = socket.socket(self.family, socket.SOCK_STREAM)
             self.sock.settimeout(self.timeout)
 
@@ -47,13 +45,11 @@ class Client:
             except OSError:
                 self.sock.close()
 
-                if retries < 0:
+                if retries == 0:
                     raise
 
                 if self.retries > 0:
                     time.sleep(self.timeout / self.retries)
-
-                retries -= 1
 
         if self.ssl:
             if not isinstance(self.ssl, ssl.SSLContext):
@@ -73,9 +69,7 @@ class Client:
         if self.loop is None:
             self.loop = asyncio.get_running_loop()
 
-        retries = self.retries
-
-        while True:
+        for retries in range(self.retries, -1, -1):
             self.sock = socket.socket(self.family, socket.SOCK_STREAM)
             self.sock.setblocking(False)
 
@@ -93,13 +87,11 @@ class Client:
             except OSError:
                 self.sock.close()
 
-                if retries < 0:
+                if retries == 0:
                     raise
 
                 if self.retries > 0:
                     await asyncio.sleep(self.timeout / self.retries)
-
-                retries -= 1
             finally:
                 timer.cancel()
 

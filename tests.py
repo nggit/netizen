@@ -304,7 +304,7 @@ class TestHTTPClient(unittest.TestCase):
         with self.assertRaises(socket.timeout):
             asyncio.run(main())
 
-    def test_retries(self):
+    def test_connect_retries(self):
         with self.assertRaises(OSError):
             with HTTPClient('example.invalid', 80, timeout=1, retries=1):
                 pass
@@ -315,6 +315,40 @@ class TestHTTPClient(unittest.TestCase):
 
         with self.assertRaises(OSError):
             asyncio.run(main())
+
+    def test_send_retries(self):
+        with self.client:
+            self.client.sock.close()
+
+            with self.assertRaises(OSError):
+                self.client.send(b'GET / HTTP/1.1')
+
+        with HTTPClient('127.0.0.1', 27000, retries=1) as client:
+            client.sock.close()
+
+            response = client.send(b'GET / HTTP/1.1')
+            body = response.body()
+
+            self.assertTrue(body.startswith(b'BEGIN'))
+            self.assertTrue(body.endswith(b'END'))
+
+        async def main():
+            async with self.client:
+                self.client.sock.close()
+
+                with self.assertRaises(OSError):
+                    await self.client.send(b'GET / HTTP/1.1')
+
+            async with HTTPClient('127.0.0.1', 27000, retries=1) as client:
+                client.sock.close()
+
+                response = await client.send(b'GET / HTTP/1.1')
+                body = await response.body()
+
+                self.assertTrue(body.startswith(b'BEGIN'))
+                self.assertTrue(body.endswith(b'END'))
+
+        asyncio.run(main())
 
     def test_recv_timeout(self):
         with HTTPClient('127.0.0.1', 27000, timeout=1) as client:
