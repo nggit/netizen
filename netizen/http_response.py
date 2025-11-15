@@ -90,9 +90,9 @@ class HTTPResponse:
         self._chunked = ChunkedDecoder()
 
         if client.sock.getblocking():
-            for retries in range(self.client.retries, -1, -1):
+            for retries in range(client.retries, -1, -1):
                 try:
-                    if retries != self.client.retries:
+                    if retries != client.retries:
                         client.sock.close()
                         client.__enter__()
 
@@ -106,7 +106,8 @@ class HTTPResponse:
                     if retries == 0:
                         raise
                 except StopIteration:
-                    break
+                    if retries == client.retries:
+                        break
 
     @property
     def status(self):
@@ -168,7 +169,8 @@ class HTTPResponse:
                     if retries == 0:
                         raise
                 except StopAsyncIteration:
-                    break
+                    if retries == self.client.retries:
+                        break
 
             return self
 
@@ -222,11 +224,17 @@ class HTTPResponse:
                 if self._buf:
                     for data in self._chunked.parse(self._buf):
                         if data is None:
+                            self.content_length = 0
                             raise StopIteration
 
                         return data
 
-                self._buf.extend(self.client.sock.recv(16384))
+                data = self.client.sock.recv(16384)
+
+                if data == b'':
+                    raise StopIteration
+
+                self._buf.extend(data)
 
         # Content-Length
         if self.content_length == 0:
@@ -265,13 +273,18 @@ class HTTPResponse:
                 if self._buf:
                     for data in self._chunked.parse(self._buf):
                         if data is None:
+                            self.content_length = 0
                             raise StopAsyncIteration
 
                         return data
 
-                self._buf.extend(
-                    await self.client.loop.sock_recv(self.client.sock, 16384)
-                )
+                data = await self.client.loop.sock_recv(self.client.sock,
+                                                        16384)
+
+                if data == b'':
+                    raise StopAsyncIteration
+
+                self._buf.extend(data)
 
         # Content-Length
         if self.content_length == 0:

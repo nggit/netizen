@@ -123,6 +123,7 @@ class TestHTTPClient(unittest.TestCase):
 
             self.assertTrue(body.startswith(b'BEGIN'))
             self.assertTrue(body.endswith(b'END'))
+            self.assertEqual(response.body(), b'')
 
     def test_get_content_length_async(self):
         async def main():
@@ -132,6 +133,7 @@ class TestHTTPClient(unittest.TestCase):
 
                 self.assertTrue(body.startswith(b'BEGIN'))
                 self.assertTrue(body.endswith(b'END'))
+                self.assertEqual(await response.body(), b'')
 
         asyncio.run(main())
 
@@ -142,6 +144,7 @@ class TestHTTPClient(unittest.TestCase):
 
             self.assertTrue(body.startswith(b'BEGIN'))
             self.assertTrue(body.endswith(b'END'))
+            self.assertEqual(response.body(), b'')
 
     def test_get_chunked_async(self):
         async def main():
@@ -151,6 +154,7 @@ class TestHTTPClient(unittest.TestCase):
 
                 self.assertTrue(body.startswith(b'BEGIN'))
                 self.assertTrue(body.endswith(b'END'))
+                self.assertEqual(await response.body(), b'')
 
         asyncio.run(main())
 
@@ -275,6 +279,7 @@ class TestHTTPClient(unittest.TestCase):
             self.assertEqual(response.status, 200)
             self.assertEqual(response.message, b'OK')
             self.assertEqual(body, b'EOF\n')
+            self.assertEqual(self.client.recv(4096), b'')
 
         async def main():
             async with self.client:
@@ -289,6 +294,7 @@ class TestHTTPClient(unittest.TestCase):
                 self.assertEqual(response.status, 200)
                 self.assertEqual(response.message, b'OK')
                 self.assertEqual(body, b'EOF\n')
+                self.assertEqual(await self.client.recv(4096), b'')
 
         asyncio.run(main())
 
