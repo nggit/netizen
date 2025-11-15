@@ -9,6 +9,7 @@ and don't need high-level abstraction.
 
 ## Features
 * Symmetrical interface, e.g. `client.send()` vs `await client.send()`
+* The `retries` parameter makes it resilient and prevents flaky tests
 * ~500 lines of code
 * No dependencies other than the [Python Standard Library](https://docs.python.org/3/library/index.html)
 
@@ -140,7 +141,7 @@ with HTTPClient('google.com', 443, ssl=True) as client:
 
 ## Working directly with socket using `client.sendall()` and `client.recv()`
 ```python
-with HTTPClient('localhost', 8000, timeout=10) as client:
+with HTTPClient('localhost', 8000, timeout=10, retries=10) as client:
     response = client.send(
         b'GET /chat HTTP/1.1',
         b'Upgrade: WebSocket',

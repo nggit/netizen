@@ -128,7 +128,7 @@ class HTTPClient(Client):
             b'Accept: */*'
         ]
 
-    def delete_header(self, name):
+    def remove_header(self, name):
         i = len(self.headers)
 
         while i > 0:
@@ -140,7 +140,7 @@ class HTTPClient(Client):
     def update_header(self, value):
         name, _ = value.split(b':', 1)
 
-        self.delete_header(name)
+        self.remove_header(name)
         self.headers.append(value)
 
     def update_cookie(self, value):
@@ -161,6 +161,7 @@ class HTTPClient(Client):
             headers.append(b'Content-Length: %d' % len(body))
 
         header = b'\r\n'.join(self.headers + headers)
-        pending = body == b'' and b'\r\nContent-Length:' in header
+        pending = body == b'' and (b'\r\nContent-Length:' in header or
+                                   b'\r\nTransfer-Encoding:' in header)
 
         return HTTPResponse(self, line, header, body, pending=pending)
