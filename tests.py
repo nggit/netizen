@@ -230,8 +230,10 @@ class TestHTTPClient(unittest.TestCase):
 
     def test_headers(self):
         with self.client:
-            self.client.update_header(b'User-Agent: Mozilla/5.0')
-            response = self.client.send(b'GET / HTTP/1.1')
+            response = self.client.send(
+                b'GET / HTTP/1.1',
+                b'User-Agent: Mozilla/5.0'
+            )
             line, header, body = response.request
             print('->', response.request)
             print('<-', response.headers)
