@@ -32,6 +32,9 @@ class Client:
         self.sock = None
 
     def __enter__(self):
+        if self.sock is not None:
+            self.sock.close()
+
         for retries in range(self.retries, -1, -1):
             self.sock = socket.socket(self.family, socket.SOCK_STREAM)
             self.sock.settimeout(self.timeout)
@@ -68,6 +71,9 @@ class Client:
     async def __aenter__(self):
         if self.loop is None:
             self.loop = asyncio.get_running_loop()
+
+        if self.sock is not None:
+            self.sock.close()
 
         for retries in range(self.retries, -1, -1):
             self.sock = socket.socket(self.family, socket.SOCK_STREAM)
@@ -161,7 +167,10 @@ class HTTPClient(Client):
             headers.append(b'Content-Length: %d' % len(body))
 
         header = b'\r\n'.join(self.headers + headers)
-        pending = body == b'' and (b'\r\nContent-Length:' in header or
-                                   b'\r\nTransfer-Encoding:' in header)
+        defer = body == b'' and (b'\r\nContent-Length:' in header or
+                                 b'\r\nTransfer-Encoding:' in header)
 
-        return HTTPResponse(self, line, header, body, pending=pending)
+        return HTTPResponse(self, line, header, body, defer=defer)
+
+    def end(self):
+        return HTTPResponse(self)

@@ -155,5 +155,22 @@ with HTTPClient('localhost', 8000, timeout=10, retries=10) as client:
         print('Received:', client.recv(4096))
 ```
 
+## Manually craft a bad request with `client.sendall()` and `client.end()`
+```python
+with HTTPClient('localhost', 8000) as client:
+    client.sendall(
+        b'POST /upload HTTP/1.1\r\n'
+        b'Host: localhost\r\n'
+        b'Content-Length: 5\r\n'
+        b'Transfer-Encoding: chunked\r\n\r\n'
+    )
+    client.sendall(b'0\r\n\r\n')
+
+    # we are not using the `client.send()`, but we need the response object?
+    response = client.end()
+
+    print(response.body())
+```
+
 ## License
 MIT License

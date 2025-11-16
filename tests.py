@@ -97,10 +97,14 @@ class EchoHandler(BaseHTTPRequestHandler):
             self.wfile.write(body)
 
     def do_POST(self):
-        length = int(self.headers.get('Content-Length', 0))
-        body = self.rfile.read(length)
+        length = self.headers.get('Content-Length', 0)
+        body = self.rfile.read(int(length))
 
         self.send_response(200)
+
+        if self.request_version == 'HTTP/1.1':
+            self.send_header('Content-Length', length)
+
         self.send_header('Content-Type', 'text/plain')
         self.end_headers()
 
@@ -161,9 +165,47 @@ class TestHTTPClient(unittest.TestCase):
     def test_post_no_content_length(self):
         with self.client:
             response = self.client.send(b'POST / HTTP/1.0', body=b'foo=bar')
-            body = response.body()
 
-            self.assertEqual(body, b'foo=bar')
+            self.assertEqual(response.body(), b'foo=bar')
+
+    def test_post_continue(self):
+        with self.client:
+            response = self.client.send(
+                b'POST / HTTP/1.1',
+                b'Content-Length: 7',
+                b'Expect: 100-continue'
+            )
+
+            self.assertEqual(response.body(), b'')
+            self.assertEqual(response.status, 100)
+            self.assertEqual(response.message, b'Continue')
+
+            self.client.sendall(b'foo=bar')
+
+            self.assertEqual(response.body(), b'foo=bar')
+            self.assertEqual(response.status, 200)
+            self.assertEqual(response.message, b'OK')
+
+        async def main():
+            async with self.client:
+                response = await self.client.send(
+                    b'POST / HTTP/1.1',
+                    b'Content-Length: 7',
+                    b'Expect: 100-continue'
+                )
+
+                self.assertEqual(await response.body(), b'')
+                self.assertEqual(response.status, 100)
+                self.assertEqual(response.message, b'Continue')
+
+                await self.client.sendall(b'foo=bar')
+                response = await self.client.end()  # optional
+
+                self.assertEqual(await response.body(), b'foo=bar')
+                self.assertEqual(response.status, 200)
+                self.assertEqual(response.message, b'OK')
+
+        asyncio.run(main())
 
     def test_get_json(self):
         with self.client:
@@ -266,34 +308,31 @@ class TestHTTPClient(unittest.TestCase):
 
         asyncio.run(main())
 
-    def test_post_pending_body(self):
+    def test_post_defer_body(self):
         with self.client:
-            response = self.client.send(b'POST / HTTP/1.0',
-                                        b'Content-Length: 4')
+            self.client.send(b'POST / HTTP/1.0', b'Content-Length: 4')
             self.client.sendall(b'EOF\n')
 
-            self.assertEqual(response.header, None)
-
-            body = response.body()
+            response = self.client.end()
 
             self.assertEqual(response.status, 200)
             self.assertEqual(response.message, b'OK')
-            self.assertEqual(body, b'EOF\n')
+            self.assertEqual(response.body(), b'EOF\n')
             self.assertEqual(self.client.recv(4096), b'')
 
         async def main():
             async with self.client:
-                response = await self.client.send(b'POST / HTTP/1.0',
-                                                  b'Content-Length: 4')
+                await self.client.send(
+                    b'POST / HTTP/1.0',
+                    b'Content-Length: 4'
+                )
                 await self.client.sendall(b'EOF\n')
 
-                self.assertEqual(response.header, None)
-
-                body = await response.body()
+                response = await self.client.end()
 
                 self.assertEqual(response.status, 200)
                 self.assertEqual(response.message, b'OK')
-                self.assertEqual(body, b'EOF\n')
+                self.assertEqual(await response.body(), b'EOF\n')
                 self.assertEqual(await self.client.recv(4096), b'')
 
         asyncio.run(main())

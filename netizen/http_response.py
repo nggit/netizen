@@ -78,11 +78,13 @@ class JSONResponse(dict):
 
 
 class HTTPResponse:
-    def __init__(self, client, *args, **kwargs):
+    def __init__(self, client, *args, defer=False):
         self.client = client
         self.request = args
-        self.options = kwargs
+        self.defer = defer
         self.header = None
+        self.status = 0
+        self.message = b''
         self.url = b''
         self.content_length = -2  # unknown length
 
@@ -96,9 +98,10 @@ class HTTPResponse:
                         client.sock.close()
                         client.__enter__()
 
-                    client.sock.sendall(b'%s\r\n%s\r\n\r\n%s' % args)
+                    if args:
+                        client.sock.sendall(b'%s\r\n%s\r\n\r\n%s' % args)
 
-                    while self.header is None and not kwargs['pending']:
+                    while self.header is None and not defer:
                         self.__next__()
 
                     break
@@ -108,14 +111,6 @@ class HTTPResponse:
                 except StopIteration:
                     if retries == client.retries:
                         break
-
-    @property
-    def status(self):
-        return self.header.status
-
-    @property
-    def message(self):
-        return self.header.message
 
     @property
     def headers(self):
@@ -158,10 +153,13 @@ class HTTPResponse:
                         self.client.sock.close()
                         await self.client.__aenter__()
 
-                    await self.client.loop.sock_sendall(
-                        self.client.sock, b'%s\r\n%s\r\n\r\n%s' % self.request
-                    )
-                    while self.header is None and not self.options['pending']:
+                    if self.request:
+                        await self.client.loop.sock_sendall(
+                            self.client.sock,
+                            b'%s\r\n%s\r\n\r\n%s' % self.request
+                        )
+
+                    while self.header is None and not self.defer:
                         await self.__anext__()
 
                     break
@@ -191,6 +189,9 @@ class HTTPResponse:
 
         # -- HEADER --
         self.header = HTTPHeader().parse(self._buf, header_size)
+        self.status = self.header.status
+        self.message = self.header.message
+
         del self._buf[:header_size + 2]
 
         if b'chunked' in self.header.headers.getlist(b'transfer-encoding'):
@@ -217,6 +218,10 @@ class HTTPResponse:
 
             self._handle_response(data)
             return b''
+
+        if self.status == 100:
+            self.header = None
+            raise StopIteration
 
         # --- BODY ---
         if self.content_length == -1:  # chunked
@@ -266,6 +271,10 @@ class HTTPResponse:
 
             self._handle_response(data)
             return b''
+
+        if self.status == 100:
+            self.header = None
+            raise StopAsyncIteration
 
         # --- BODY ---
         if self.content_length == -1:  # chunked
