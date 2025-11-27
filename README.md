@@ -9,13 +9,33 @@ and don't need high-level abstraction.
 
 ## Features
 * Symmetrical interface, e.g. `client.send()` vs `await client.send()`
-* The `retries` parameter makes it resilient and prevents flaky tests
+* The [retries](#timeout-and-retries-parameters) parameter makes it resilient and prevents flaky tests
 * ~500 lines of code
 * No dependencies other than the [Python Standard Library](https://docs.python.org/3/library/index.html)
 
 ## Installation
 ```
 pip install git+https://github.com/nggit/netizen.git
+```
+
+## `timeout` and `retries` parameters
+These two are related, but what you probably want to know is how retries work.
+
+Basically, here is the flow of an HTTP request:
+1. Connect to the `host` and `port`
+2. Send the request header and (optionally) the body
+3. Receive the response header
+4. Stream the body if necessary
+
+Netizen only guarantees retries until the 3rd stage is successful.
+
+Retries in stage 1 are useful for waiting for the server to be ready to accept
+connections.
+This is suitable for testing without having to worry about sequence or timing.
+
+`retries` depends on `timeout` to determine the interval value:
+```
+interval = timeout / retries
 ```
 
 ## Handling a JSON response body
